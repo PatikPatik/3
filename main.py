@@ -6,14 +6,15 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 import aiohttp
 import nest_asyncio
 import threading
-import os
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CRYPTOBOT_TOKEN = os.getenv("CRYPTOBOT_TOKEN")
+# 🔐 Токены
+BOT_TOKEN = "8190768971:AAGGSA5g-hUnrc34R8gOwwjfSez8BJ6Puz8"
+CRYPTOBOT_TOKEN = "436380:AATIxpkr8ghHzhQq7psQ9YdjUXxLSQuAdUA"
 
-flask_app = Flask(__name__)
+# 🌐 Flask
+app = Flask(__name__)
 
-@flask_app.route('/crypto', methods=['POST'])
+@app.route('/crypto', methods=['POST'])
 def crypto_webhook():
     data = request.json
     print("\n📥 Получено уведомление от CryptoBot:", data)
@@ -23,21 +24,39 @@ def crypto_webhook():
         print(f"✅ Оплата прошла: user_id={user_id}, amount={amount}")
     return "ok"
 
+# 📎 Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("💸 Оплатить", callback_data="pay")]]
+    keyboard = [
+        [InlineKeyboardButton("💰 Баланс", callback_data="balance")],
+        [InlineKeyboardButton("🚀 Купить хешрейт", callback_data="buy")],
+        [InlineKeyboardButton("👥 Пригласить друга", callback_data="invite")],
+        [InlineKeyboardButton("ℹ️ Помощь", callback_data="help")],
+        [InlineKeyboardButton("💸 Оплатить", callback_data="pay")]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Добро пожаловать! Нажмите кнопку для оплаты:", reply_markup=reply_markup)
+    await update.message.reply_text("Добро пожаловать! Выберите действие:", reply_markup=reply_markup)
 
+# 🔘 Обработка кнопок
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     if query.data == "pay":
         url = await create_invoice(query.from_user.id)
         if url:
             await query.edit_message_text(f"Перейдите по ссылке для оплаты:\n{url}")
         else:
             await query.edit_message_text("Ошибка при создании счета.")
+    elif query.data == "balance":
+        await query.edit_message_text("💰 Ваш текущий баланс: 0.001 BTC")
+    elif query.data == "buy":
+        await query.edit_message_text("🚀 Для покупки хешрейта перейдите на https://example.com")
+    elif query.data == "invite":
+        await query.edit_message_text("👥 Пригласите друга и получите 1% от его дохода.\nВаша ссылка: https://t.me/yourbot?start=123456")
+    elif query.data == "help":
+        await query.edit_message_text("ℹ️ Напишите /start, чтобы открыть меню снова. Поддержка: @support")
 
+# 🧾 Создание счёта через CryptoBot
 async def create_invoice(user_id: int):
     url = "https://pay.crypt.bot/api/createInvoice"
     headers = {
@@ -65,15 +84,17 @@ async def create_invoice(user_id: int):
                 return result["result"]["pay_url"]
             return None
 
+# 🚀 Запуск Telegram-бота
 async def run_bot():
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    print("✅ Telegram bot started")
-    await app.run_polling()
+    app_bot = Application.builder().token(BOT_TOKEN).build()
+    app_bot.add_handler(CommandHandler("start", start))
+    app_bot.add_handler(CallbackQueryHandler(button_handler))
+    print("✅ Telegram bot запущен")
+    await app_bot.run_polling()
 
+# 📦 Параллельный запуск Flask и Telegram
 def start_flask():
-    flask_app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
