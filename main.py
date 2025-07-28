@@ -1,99 +1,67 @@
 import logging
-import threading
 from flask import Flask, request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Dispatcher
+import os
 
-# 🔐 Токены
 BOT_TOKEN = "8190768971:AAGGSA5g-hUnrc34R8gOwwjfSez8BJ6Puz8"
-CRYPTOBOT_TOKEN = "436380:AATIxpkr8ghHzhQq7psQ9YdjUXxLSQuAdUA"
 
-# 🌐 Flask
+# Flask App
 app = Flask(__name__)
 
-@app.route('/crypto', methods=['POST'])
-def crypto_webhook():
-    data = request.json
-    print("\n📥 Получено уведомление от CryptoBot:", data)
-    if data.get("status") == "success":
-        user_id = data.get("user_id")
-        amount = data.get("amount")
-        print(f"✅ Оплата прошла: user_id={user_id}, amount={amount}")
-    return "ok"
+# Telegram Bot
+bot = Bot(token=BOT_TOKEN)
+application = Application.builder().token(BOT_TOKEN).build()
+dispatcher = application.dispatcher
 
-# 📎 Команда /start
-def start(update: Update, context: CallbackContext):
+# Обработка команды /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💸 Оплатить", callback_data="pay")],
         [InlineKeyboardButton("💰 Баланс", callback_data="balance")],
-        [InlineKeyboardButton("⚙️ Купить хешрейт", callback_data="buy_hashrate")]
+        [InlineKeyboardButton("🚀 Купить хешрейт", callback_data="buy")],
+        [InlineKeyboardButton("👥 Пригласить друга", callback_data="invite")],
+        [InlineKeyboardButton("ℹ️ Помощь", callback_data="help")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("Добро пожаловать! Выберите действие:", reply_markup=reply_markup)
+    await update.message.reply_text("Привет! Выберите действие:", reply_markup=reply_markup)
 
-# 🔘 Обработка кнопок
-def button_handler(update: Update, context: CallbackContext):
+# Обработка нажатий на кнопки
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    query.answer()
-    
-    if query.data == "pay":
-        url = create_invoice(query.from_user.id)
-        if url:
-            query.edit_message_text(f"Перейдите по ссылке для оплаты:\n{url}")
-        else:
-            query.edit_message_text("Ошибка при создании счёта.")
-    
-    elif query.data == "balance":
-        query.edit_message_text("💰 Ваш баланс: 0 USDT")  # Здесь можно подключить реальный расчёт
-    elif query.data == "buy_hashrate":
-        query.edit_message_text("⚙️ Купить хешрейт пока недоступно.")
+    await query.answer()
+    data = query.data
 
-# 🧾 Создание счёта через CryptoBot
-import requests
-def create_invoice(user_id: int):
-    url = "https://pay.crypt.bot/api/createInvoice"
-    headers = {
-        "Content-Type": "application/json",
-        "Crypto-Pay-API-Token": CRYPTOBOT_TOKEN
-    }
-    payload = {
-        "asset": "USDT",
-        "amount": 1.00,
-        "description": "Оплата подписки",
-        "hidden_message": "Спасибо за оплату!",
-        "paid_btn_name": "openChannel",
-        "paid_btn_url": "https://t.me/yourchannel",
-        "payload": str(user_id),
-        "allow_comments": False,
-        "allow_anonymous": False,
-        "expires_in": 900
-    }
-    try:
-        response = requests.post(url, headers=headers, json=payload)
-        data = response.json()
-        print("🧾 Ответ от CryptoBot:", data)
-        if data.get("ok"):
-            return data["result"]["pay_url"]
-    except Exception as e:
-        print("Ошибка при создании счёта:", e)
-    return None
+    if data == "pay":
+        await query.edit_message_text("Платёжная система ещё настраивается.")
+    elif data == "balance":
+        await query.edit_message_text("Ваш баланс: 0.001 BTC")
+    elif data == "buy":
+        await query.edit_message_text("Вы можете купить хешрейт позже.")
+    elif data == "invite":
+        await query.edit_message_text("Пригласите друга и получите бонус.")
+    elif data == "help":
+        await query.edit_message_text("Это облачный майнинг-бот.")
 
-# 🚀 Запуск Telegram-бота
-def run_bot():
-    updater = Updater(BOT_TOKEN, use_context=True)
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CallbackQueryHandler(button_handler))
+# Регистрация обработчиков
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CallbackQueryHandler(button_handler))
 
-    print("✅ Telegram бот запущен")
-    updater.start_polling()
-    updater.idle()
+# Обработка запросов от Telegram
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return 'ok'
 
-# 📦 Параллельный запуск Flask и Telegram
-def start_flask():
-    app.run(host="0.0.0.0", port=5000)
+# Установка webhook
+@app.route('/set_webhook', methods=['GET'])
+def set_webhook():
+    url = "https://three-0hx9.onrender.com/webhook"  # поменяй на свой Render URL
+    success = bot.set_webhook(url=url)
+    return f"Webhook set: {success}"
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
-    threading.Thread(target=start_flask).start()
-    run_bot()
+    app.run(host='0.0.0.0', port=5000)
